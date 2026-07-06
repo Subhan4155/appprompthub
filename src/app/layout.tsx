@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
 import "./globals.css";
+import Preloader from "@/components/Preloader";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -13,6 +14,11 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://appprompthub.com"),
   alternates: {
     canonical: "/",
+  },
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/logo-mark.png",
   },
   openGraph: {
     title: "AppPromptHub - Free AI Web Apps & Image Prompts Library",
@@ -45,7 +51,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={outfit.variable} suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <Preloader />
+        {children}
+      </body>
     </html>
   );
 }

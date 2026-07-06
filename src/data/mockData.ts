@@ -22,7 +22,18 @@ Include:
     likes: 382,
     difficulty: "Intermediate",
     date: "2026-06-28",
-    imageUrl: "/previews/saas-dashboard.jpg"
+    imageUrl: "/previews/saas-dashboard.jpg",
+    priceCents: 499,
+    previewText: "Create a single-page React component for a SaaS Analytics Dashboard. It should use HTML5 semantic tags and be styled using a premium, dark-themed dashboard look...",
+    fullText: `Create a single-page React component for a SaaS Analytics Dashboard. It should use HTML5 semantic tags and be styled using a premium, dark-themed dashboard look.
+Include:
+1. Sidebar navigation with animated hover effects (Dashboard, Analytics, Customers, Settings).
+2. Header with search bar, notifications icon, and user profile dropdown.
+3. Top Metrics Row: 4 cards showing Revenue ($48,250, +12%), Active Users (10,240, +5%), Conversion Rate (2.4%, -0.8%), and Bounce Rate (41%, -3%).
+4. Main Content Area:
+   - A large interactive chart area (mocked with SVG or clean CSS bars) representing monthly revenue.
+   - A table showing "Recent Transactions" with status badges (Completed, Pending, Failed).
+5. Interactivity: Clicking a metric card highlights it, and hover effects are smooth and responsive. Use pure inline styling or standard CSS classes. No external library dependencies except Lucide icons if needed (or use custom SVG icons).`
   },
   {
     id: "p2",

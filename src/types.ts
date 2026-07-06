@@ -12,6 +12,9 @@ export interface PromptItem {
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
   imageUrl?: string;
   date: string; // Added date for sorting by newest
+  priceCents?: number;
+  previewText?: string;
+  fullText?: string;
 }
 
 export interface NewsItem {
