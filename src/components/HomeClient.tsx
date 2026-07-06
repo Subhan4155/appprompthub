@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import SiteHeader from "./SiteHeader";
 import { mockPrompts as defaultMockPrompts, mockNews as defaultMockNews } from "../data/mockData";
 import { PromptItem, NewsItem } from "../types";
 import { supabase, hasSupabaseCredentials } from "../lib/supabase";
@@ -20,8 +21,12 @@ interface CopyHistoryItem {
   timestamp: string;
 }
 
-export default function HomeClient() {
-  const [activeTab, setActiveTab] = useState<"explore" | "builder" | "news" | "workspace">("explore");
+interface HomeClientProps {
+  defaultTab?: "explore" | "builder" | "news" | "workspace";
+}
+
+export default function HomeClient({ defaultTab = "explore" }: HomeClientProps) {
+  const [activeTab, setActiveTab] = useState<"explore" | "builder" | "news" | "workspace">(defaultTab);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "web-app" | "blog" | "image-gen">("all");
   const [selectedPrompt, setSelectedPrompt] = useState<PromptItem | null>(null);
@@ -52,7 +57,19 @@ export default function HomeClient() {
   // User Workspace States
   const [userCustomPrompts, setUserCustomPrompts] = useState<CustomUserPrompt[]>([]);
   const [copyHistory, setCopyHistory] = useState<CopyHistoryItem[]>([]);
+  const [mySubmissions, setMySubmissions] = useState<any[]>([]);
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+  const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const [submitForm, setSubmitForm] = useState({
+    title: "",
+    description: "",
+    category: "web-app" as "web-app" | "blog" | "image-gen",
+    targetAI: "Claude 3.5 Sonnet",
+    promptText: "",
+    outputDescription: "",
+    difficulty: "Intermediate" as "Beginner" | "Intermediate" | "Advanced",
+  });
+  const [submitLoading, setSubmitLoading] = useState(false);
   const [editingCustom, setEditingCustom] = useState<CustomUserPrompt | null>(null);
   const [customForm, setCustomForm] = useState({
     title: "",
@@ -107,6 +124,37 @@ export default function HomeClient() {
       subscription.unsubscribe();
     };
   }, []);
+
+  const loadSubmissions = async () => {
+    if (!activeUser) return;
+    if (!hasSupabaseCredentials) {
+      // Load mock submissions
+      try {
+        const mockSubs = JSON.parse(localStorage.getItem("appprompthub_mock_submissions") || "[]");
+        const filtered = mockSubs.filter((s: any) => s.submittedBy === activeUser.id);
+        setMySubmissions(filtered);
+      } catch (e) {
+        console.error(e);
+      }
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("prompts")
+        .select("*")
+        .eq("submitted_by", activeUser.id);
+      if (!error && data) {
+        setMySubmissions(data);
+      }
+    } catch (err) {
+      console.warn("Submissions loading failed:", err);
+    }
+  };
+
+  // Load community submissions
+  useEffect(() => {
+    loadSubmissions();
+  }, [activeUser]);
 
   // Fetch prompts & news from Supabase
   useEffect(() => {
@@ -574,6 +622,99 @@ export default function HomeClient() {
     setIsCustomModalOpen(false);
   };
 
+  const handlePromptSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!submitForm.title || !submitForm.promptText) {
+      triggerToast("Please fill in title and prompt instructions.");
+      return;
+    }
+
+    setSubmitLoading(true);
+
+    try {
+      const promptId = `pr-${Date.now()}`;
+      const slug = submitForm.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+
+      const today = new Date().toISOString().split("T")[0];
+
+      if (!hasSupabaseCredentials) {
+        // Mock Sandbox submission persistence
+        const mockSubmissions = JSON.parse(localStorage.getItem("appprompthub_mock_submissions") || "[]");
+        const newMockSubmission = {
+          id: promptId,
+          slug,
+          title: submitForm.title,
+          description: submitForm.description,
+          category: submitForm.category,
+          targetAI: submitForm.targetAI,
+          promptText: submitForm.promptText,
+          outputDescription: submitForm.outputDescription,
+          difficulty: submitForm.difficulty,
+          date: today,
+          status: "pending",
+          source: "community",
+          submittedBy: activeUser?.id || "mock-user"
+        };
+        localStorage.setItem("appprompthub_mock_submissions", JSON.stringify([newMockSubmission, ...mockSubmissions]));
+        
+        triggerToast("Prompt recipe submitted to moderator queue!");
+        
+        setIsSubmitModalOpen(false);
+        setSubmitForm({
+          title: "",
+          description: "",
+          category: "web-app",
+          targetAI: "Claude 3.5 Sonnet",
+          promptText: "",
+          outputDescription: "",
+          difficulty: "Intermediate",
+        });
+        loadSubmissions();
+        return;
+      }
+
+      const { error } = await supabase.from("prompts").insert({
+        id: promptId,
+        slug,
+        title: submitForm.title,
+        description: submitForm.description,
+        category: submitForm.category,
+        target_ai: submitForm.targetAI,
+        prompt_text: submitForm.promptText,
+        output_description: submitForm.outputDescription,
+        difficulty: submitForm.difficulty,
+        date: today,
+        status: "pending",
+        source: "community",
+        submitted_by: activeUser.id
+      });
+
+      if (error) throw error;
+
+      triggerToast("Prompt recipe submitted to moderator queue!");
+
+      setIsSubmitModalOpen(false);
+      setSubmitForm({
+        title: "",
+        description: "",
+        category: "web-app",
+        targetAI: "Claude 3.5 Sonnet",
+        promptText: "",
+        outputDescription: "",
+        difficulty: "Intermediate",
+      });
+      loadSubmissions();
+    } catch (err: unknown) {
+      console.error(err);
+      triggerToast(err instanceof Error ? err.message : "Failed to submit prompt.");
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
   const handleCustomPromptDelete = (id: string) => {
     if (!confirm("Are you sure you want to delete this custom template?")) return;
     const updated = userCustomPrompts.filter((item) => item.id !== id);
@@ -774,46 +915,11 @@ Write clean, modular code following standard structures. Include inline document
       </div>
 
       {/* Header */}
-      <header className="app-header">
-        <div className="app-header__container">
-          <div className="logo-container">
-            <span className="logo-icon">▲</span>
-            <span>App<span className="logo-text">PromptHub</span></span>
-          </div>
-          <nav className="nav-links" style={{ display: "flex", alignItems: "center" }}>
-            <Link href="/explore" className="nav-link" style={{ cursor: "pointer" }}>Explore</Link>
-            <button aria-label="Go to interactive builder" onClick={() => { setActiveTab("builder"); window.scrollTo({top: 0, behavior: 'smooth'}); }}>Custom Builder</button>
-            <button aria-label="Go to AI release news" onClick={() => { setActiveTab("news"); window.scrollTo({top: 0, behavior: 'smooth'}); }}>AI News</button>
-            
-            {activeUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginLeft: "1.25rem", borderLeft: "1px solid var(--border-color)", paddingLeft: "1.25rem" }}>
-                <button 
-                  aria-label="Go to personal workspace dashboard"
-                  onClick={() => { setActiveTab("workspace"); window.scrollTo({top: 0, behavior: 'smooth'}); }} 
-                  style={{ color: "var(--accent-purple)", fontWeight: "700" }}
-                >
-                  My Workspace
-                </button>
-                <button 
-                  aria-label="Sign out of workspace"
-                  onClick={handleSignOut} 
-                  style={{ fontSize: "0.8rem", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
-                >
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <button 
-                aria-label="Sign in or sign up to workspace"
-                onClick={() => { setActiveTab("workspace"); window.scrollTo({top: 0, behavior: 'smooth'}); }}
-                style={{ marginLeft: "1.25rem", padding: "0.45rem 1rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--accent-purple)", color: "#fff", background: "rgba(124, 58, 237, 0.08)", fontWeight: "600", cursor: "pointer", transition: "var(--transition-fast)" }}
-              >
-                Sign In / Sign Up
-              </button>
-            )}
-          </nav>
-        </div>
-      </header>
+      <SiteHeader
+        activeUser={activeUser}
+        activeNav={activeTab}
+        onSignOut={handleSignOut}
+      />
 
       {/* Main Grid */}
       <main className="main-content">
@@ -849,37 +955,7 @@ Write clean, modular code following standard structures. Include inline document
           </section>
         )}
 
-        {/* Tab Selection - ONLY rendered on Explore tab to keep pages separated */}
-        {activeTab === "explore" && (
-          <div className="tab-group-wrapper">
-            <div className="tab-group">
-              <button
-                aria-label="View explore prompt library tab"
-                onClick={() => { setActiveTab("explore"); setVisibleCount(6); window.scrollTo({top: 0, behavior: 'smooth'}); }}
-                className="tab-button tab-button--active"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                Explore Library
-              </button>
-              <button
-                aria-label="View prompt constructor builder tab"
-                onClick={() => { setActiveTab("builder"); window.scrollTo({top: 0, behavior: 'smooth'}); }}
-                className="tab-button"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                Interactive Builder
-              </button>
-              <button
-                aria-label="View AI release news timeline tab"
-                onClick={() => { setActiveTab("news"); window.scrollTo({top: 0, behavior: 'smooth'}); }}
-                className="tab-button"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 4a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2"></path><line x1="10" y1="9" x2="14" y2="9"></line><line x1="10" y1="13" x2="14" y2="13"></line></svg>
-                AI Release Radar
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Tab Selection removed to keep pages separated */}
 
         {/* Main Content Area */}
         <div className="tabs-container">
@@ -1027,12 +1103,13 @@ Write clean, modular code following standard structures. Include inline document
                               >
                                 {copiedId === prompt.id ? "Copied!" : "Copy Prompt"}
                               </button>
-                              <button
-                                onClick={() => handleViewDetails(prompt)}
+                              <Link
+                                href={`/prompt/${prompt.slug}`}
                                 className="prompt-btn--details"
+                                style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                               >
                                 Details
-                              </button>
+                              </Link>
                             </div>
                           </div>
                           
@@ -1591,6 +1668,42 @@ Write clean, modular code following standard structures. Include inline document
                     )}
                   </div>
 
+                  {/* 3. My Community Submissions */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                      <h2 style={{ fontSize: "1.35rem", fontWeight: "700", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        ✉️ My Submissions ({mySubmissions.length})
+                      </h2>
+                      <button onClick={() => setIsSubmitModalOpen(true)} className="load-more-btn" style={{ padding: "0.4rem 1rem", fontSize: "0.75rem", borderColor: "var(--accent-purple)", color: "var(--accent-purple)" }}>
+                        + Submit Prompt
+                      </button>
+                    </div>
+
+                    {mySubmissions.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                        {mySubmissions.map((sub) => {
+                          const statusColor = sub.status === "approved" ? "var(--accent-green)" : sub.status === "rejected" ? "var(--accent-red)" : "orange";
+                          return (
+                            <div key={sub.id} className="workspace-saved-card" style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "1.25rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div>
+                                <h3 style={{ fontSize: "1.05rem", fontWeight: "600", color: "#fff", marginBottom: "0.25rem" }}>{sub.title}</h3>
+                                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", margin: 0 }}>Target: {sub.targetAI || sub.target_ai} | Category: {sub.category}</p>
+                              </div>
+                              <span style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem", borderRadius: "3px", fontWeight: "700", border: `1px solid ${statusColor}`, color: statusColor, textTransform: "uppercase" }}>
+                                {sub.status}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ background: "rgba(255,255,255,0.01)", border: "1px dashed var(--border-color)", padding: "2.5rem 1.5rem", borderRadius: "var(--radius-md)", textAlign: "center", color: "var(--text-muted)" }}>
+                        <p style={{ fontSize: "0.85rem" }}>You haven't submitted any prompts to the community library yet.</p>
+                        <button onClick={() => setIsSubmitModalOpen(true)} className="load-more-btn" style={{ marginTop: "1rem", fontSize: "0.75rem", padding: "0.5rem 1.25rem", borderColor: "var(--accent-purple)", color: "var(--accent-purple)" }}>Submit Your First Prompt</button>
+                      </div>
+                    )}
+                  </div>
+
                 </div>
 
                 {/* Right Column: session history & subscriptions */}
@@ -1608,6 +1721,10 @@ Write clean, modular code following standard structures. Include inline document
                       <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
                         <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>My Custom Templates</span>
                         <span style={{ fontWeight: "700", color: "var(--accent-purple)" }}>{userCustomPrompts.length}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
+                        <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>Submitted Prompts</span>
+                        <span style={{ fontWeight: "700", color: "var(--accent-purple)" }}>{mySubmissions.length}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>Recent Session Copies</span>
@@ -1820,6 +1937,132 @@ Write clean, modular code following standard structures. Include inline document
         </div>
       )}
 
+      {/* MODAL 4: SHARE PROMPT RECIPE */}
+      {isSubmitModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsSubmitModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "750px" }}>
+            <button className="modal-close-btn" onClick={() => setIsSubmitModalOpen(false)}>&times;</button>
+            <h2 style={{ fontSize: "1.45rem", fontWeight: "700", marginBottom: "0.25rem", color: "#fff" }}>
+              Share Prompt Recipe
+            </h2>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
+              Submit your optimized prompt template. Submissions undergo review to verify relevance and quality.
+            </p>
+
+            <form onSubmit={handlePromptSubmit} className="admin-form">
+              <div className="builder-field">
+                <label className="builder-field__label">PROMPT TITLE</label>
+                <input
+                  type="text"
+                  className="builder-input"
+                  value={submitForm.title}
+                  onChange={(e) => setSubmitForm({ ...submitForm, title: e.target.value })}
+                  placeholder="e.g. Next.js Tailwind Accordion Component"
+                  required
+                />
+              </div>
+
+              <div className="builder-field">
+                <label className="builder-field__label">SHORT DESCRIPTION</label>
+                <input
+                  type="text"
+                  className="builder-input"
+                  value={submitForm.description}
+                  onChange={(e) => setSubmitForm({ ...submitForm, description: e.target.value })}
+                  placeholder="e.g. Generates an interactive animated accordion layout."
+                  required
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div className="builder-field">
+                  <label className="builder-field__label">LIBRARY CATEGORY</label>
+                  <select
+                    className="builder-input"
+                    style={{ background: "var(--bg-primary)", color: "#fff", border: "1px solid var(--border-color)", borderRadius: "var(--radius-sm)", padding: "0.5rem" }}
+                    value={submitForm.category}
+                    onChange={(e) => setSubmitForm({ ...submitForm, category: e.target.value as any })}
+                  >
+                    <option value="web-app">Web Apps & Engineering</option>
+                    <option value="blog">Blogs & Writing</option>
+                    <option value="image-gen">Cinematic Image Gen</option>
+                  </select>
+                </div>
+
+                <div className="builder-field">
+                  <label className="builder-field__label">COMPLEXITY LEVEL</label>
+                  <select
+                    className="builder-input"
+                    style={{ background: "var(--bg-primary)", color: "#fff", border: "1px solid var(--border-color)", borderRadius: "var(--radius-sm)", padding: "0.5rem" }}
+                    value={submitForm.difficulty}
+                    onChange={(e) => setSubmitForm({ ...submitForm, difficulty: e.target.value as any })}
+                  >
+                    <option value="Beginner">Beginner Level</option>
+                    <option value="Intermediate">Intermediate Level</option>
+                    <option value="Advanced">Advanced Level</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="builder-field" style={{ marginTop: "1rem" }}>
+                <label className="builder-field__label">TARGET MODEL PLATFORM</label>
+                <input
+                  type="text"
+                  className="builder-input"
+                  value={submitForm.targetAI}
+                  onChange={(e) => setSubmitForm({ ...submitForm, targetAI: e.target.value })}
+                  placeholder="Claude 3.5 Sonnet"
+                  required
+                />
+              </div>
+
+              <div className="builder-field">
+                <label className="builder-field__label">PROMPT INSTRUCTIONS (TEMPLATE TEXT)</label>
+                <textarea
+                  className="builder-input"
+                  style={{ minHeight: "120px", fontFamily: "monospace", fontSize: "0.8rem" }}
+                  value={submitForm.promptText}
+                  onChange={(e) => setSubmitForm({ ...submitForm, promptText: e.target.value })}
+                  placeholder="Write your prompt code here. Use brackets like [Topic] to prompt placeholders."
+                  required
+                />
+              </div>
+
+              <div className="builder-field">
+                <label className="builder-field__label">EXPECTED OUTPUTS PREVIEW</label>
+                <textarea
+                  className="builder-input"
+                  style={{ minHeight: "80px", fontFamily: "sans-serif", fontSize: "0.85rem" }}
+                  value={submitForm.outputDescription}
+                  onChange={(e) => setSubmitForm({ ...submitForm, outputDescription: e.target.value })}
+                  placeholder="Describe what this prompt outputs when run (or sample preview structure)."
+                  required
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "2rem" }}>
+                <button
+                  type="button"
+                  className="prompt-btn--details"
+                  style={{ padding: "0.55rem 1.25rem" }}
+                  onClick={() => setIsSubmitModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="action-btn-large"
+                  style={{ padding: "0.55rem 1.25rem", background: "var(--accent-purple)", color: "#000" }}
+                  disabled={submitLoading}
+                >
+                  {submitLoading ? "Submitting..." : "Submit to Moderator"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Page footer containing About & Newsletter */}
       <footer className="app-footer">
         <div className="app-footer__container">
@@ -1827,9 +2070,8 @@ Write clean, modular code following standard structures. Include inline document
           <div className="app-footer__grid">
             {/* About / Mission Onboarding */}
             <div className="app-footer__section footer-brand-section">
-              <div className="logo-container" style={{ marginBottom: "1rem" }}>
-                <span className="logo-icon">▲</span>
-                <span>App<span className="logo-text">PromptHub</span></span>
+              <div className="logo-container" style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <img src="/logo-mark.png" alt="Logo" style={{ width: "250px" }} />
               </div>
               <p className="footer-about-text">
                 AppPromptHub is an open-source, curated database of production-ready AI prompts. Built for developers, designers, and prompt engineers to ship products faster using state-of-the-art AI.

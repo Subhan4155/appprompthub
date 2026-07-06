@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import SiteHeader from "./SiteHeader";
 import { mockPrompts as defaultMockPrompts } from "../data/mockData";
 import { PromptItem } from "../types";
 import { supabase, hasSupabaseCredentials } from "../lib/supabase";
@@ -393,40 +394,7 @@ export default function ExploreClient() {
       </div>
 
       {/* Header */}
-      <header className="app-header">
-        <div className="app-header__container app-header__container--explore">
-          <Link href="/" className="logo-container" style={{ textDecoration: "none" }}>
-            <span className="logo-icon">▲</span>
-            <span>App<span className="logo-text">PromptHub</span></span>
-          </Link>
-          <nav className="nav-links" style={{ display: "flex", alignItems: "center" }}>
-            <Link href="/explore" className="nav-link" style={{ fontWeight: "700", color: "#fff" }}>Explore</Link>
-            <Link href="/?tab=builder" className="nav-link">Custom Builder</Link>
-            <Link href="/?tab=news" className="nav-link">AI News</Link>
-            
-            {activeUser ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginLeft: "1.25rem", borderLeft: "1px solid var(--border-color)", paddingLeft: "1.25rem" }}>
-                <Link href="/?tab=workspace" style={{ color: "var(--accent-purple)", fontWeight: "700", textDecoration: "none" }}>
-                  My Workspace
-                </Link>
-                <button 
-                  onClick={handleSignOut} 
-                  style={{ fontSize: "0.8rem", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
-                >
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <Link 
-                href="/?tab=workspace"
-                style={{ marginLeft: "1.25rem", padding: "0.45rem 1rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--accent-purple)", color: "#fff", background: "rgba(124, 58, 237, 0.08)", fontWeight: "600", textDecoration: "none", transition: "var(--transition-fast)" }}
-              >
-                Sign In / Sign Up
-              </Link>
-            )}
-          </nav>
-        </div>
-      </header>
+      <SiteHeader activeUser={activeUser} activeNav="explore" onSignOut={handleSignOut} />
 
       {/* Sticky Horizontal Filters Bar */}
       <div 
@@ -677,12 +645,13 @@ export default function ExploreClient() {
                             >
                               {copiedId === prompt.id ? "Copied!" : "Copy Prompt"}
                             </button>
-                            <button
-                              onClick={() => handleViewDetails(prompt)}
+                            <Link
+                              href={`/prompt/${prompt.slug}`}
                               className="prompt-btn--details"
+                              style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                             >
                               Details
-                            </button>
+                            </Link>
                           </div>
                         </div>
                         
@@ -842,9 +811,8 @@ export default function ExploreClient() {
         <div className="app-footer__container">
           <div className="app-footer__grid">
             <div className="app-footer__section footer-brand-section">
-              <Link href="/" className="logo-container" style={{ marginBottom: "1rem", textDecoration: "none" }}>
-                <span className="logo-icon">▲</span>
-                <span>App<span className="logo-text">PromptHub</span></span>
+              <Link href="/" className="logo-container" style={{ marginBottom: "1rem", textDecoration: "none", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <img src="/logo-mark.png" alt="Logo" style={{ width: "250px" }} />
               </Link>
               <p className="footer-about-text">
                 AppPromptHub is an open-source database of production AI prompts, built for developers to ship faster.

@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { mockPrompts as defaultMockPrompts, mockNews as defaultMockNews } from "../../data/mockData";
+import React, { useState, useEffect, useCallback } from "react";
+import SiteHeader from "@/components/SiteHeader";
 import { PromptItem, NewsItem } from "../../types";
-import { supabase, hasSupabaseCredentials } from "../../lib/supabase";
 
 interface SubscriberItem {
   id: string;
@@ -12,18 +11,21 @@ interface SubscriberItem {
 }
 
 export default function AdminClient() {
+  // Auth is server-side: we only track whether the current session cookie is
+  // valid. The password is never held or compared in the browser.
+  const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [serverConfigured, setServerConfigured] = useState(true);
   const [activePanel, setActivePanel] = useState<"prompts" | "news" | "subscribers" | "status">("prompts");
-  
-  // Data lists
-  const [prompts, setPrompts] = useState<PromptItem[]>(defaultMockPrompts);
-  const [news, setNews] = useState<NewsItem[]>(defaultMockNews);
-  const [subscribers, setSubscribers] = useState<SubscriberItem[]>([
-    { id: "s1", email: "onboarding@appprompthub.com", created_at: "2026-06-28T12:00:00.000Z" },
-    { id: "s2", email: "builder-beta@appprompthub.com", created_at: "2026-06-29T14:30:00.000Z" }
-  ]);
+
+  // Data lists (populated from the authorized server endpoint; no mock seed).
+  const [prompts, setPrompts] = useState<PromptItem[]>([]);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [subscribers, setSubscribers] = useState<SubscriberItem[]>([]);
   const [dbLoading, setDbLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Toast alerts
   const [showToast, setShowToast] = useState(false);
@@ -41,7 +43,7 @@ export default function AdminClient() {
     targetAI: "Claude 3.5 Sonnet",
     promptText: "",
     outputDescription: "",
-    difficulty: "Intermediate" as "Beginner" | "Intermediate" | "Advanced"
+    difficulty: "Intermediate" as "Beginner" | "Intermediate" | "Advanced",
   });
 
   // News Form States
@@ -55,68 +57,8 @@ export default function AdminClient() {
     summary: "",
     content: "",
     importance: "high" as "high" | "medium" | "low",
-    sourceUrl: ""
+    sourceUrl: "",
   });
-
-  // Fetch all lists from Supabase
-  const loadDatabaseData = async () => {
-    if (!hasSupabaseCredentials) return;
-    setDbLoading(true);
-    try {
-      // 1. Fetch prompts
-      const { data: dbPrompts, error: pe } = await supabase.from("prompts").select("*");
-      if (pe) throw pe;
-      if (dbPrompts) {
-        setPrompts(dbPrompts.map((p: any) => ({
-          id: p.id,
-          slug: p.slug,
-          title: p.title,
-          description: p.description,
-          category: p.category,
-          targetAI: p.target_ai,
-          promptText: p.prompt_text,
-          outputDescription: p.output_description,
-          views: p.views || 0,
-          likes: p.likes || 0,
-          difficulty: p.difficulty,
-          date: p.date
-        })));
-      }
-
-      // 2. Fetch news
-      const { data: dbNews, error: ne } = await supabase.from("news").select("*").order("date", { ascending: false });
-      if (ne) throw ne;
-      if (dbNews) {
-        setNews(dbNews.map((n: any) => ({
-          id: n.id,
-          slug: n.slug,
-          title: n.title,
-          category: n.category,
-          date: n.date,
-          summary: n.summary,
-          content: n.content,
-          importance: n.importance,
-          sourceUrl: n.source_url
-        })));
-      }
-
-      // 3. Fetch newsletter subscribers
-      const { data: dbSubs, error: se } = await supabase.from("subscribers").select("*").order("created_at", { ascending: false });
-      if (se) throw se;
-      if (dbSubs) {
-        setSubscribers(dbSubs.map((s: any) => ({
-          id: s.id,
-          email: s.email,
-          created_at: s.created_at
-        })));
-      }
-    } catch (err) {
-      console.error("[Admin] Failed to load data from Supabase", err);
-      triggerToast("Failed to fetch records. Operating in mock mode.");
-    } finally {
-      setDbLoading(false);
-    }
-  };
 
   // Toast Helper
   const triggerToast = (message: string) => {
@@ -131,17 +73,97 @@ export default function AdminClient() {
     }
   }, [showToast]);
 
-  // Handle Login Check
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const envPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
-    if (passwordInput === envPassword) {
-      setIsAuthenticated(true);
-      triggerToast("Access Granted. Welcome Admin!");
-      loadDatabaseData();
-    } else {
-      triggerToast("Access Denied! Incorrect Password.");
+  // Fetch all lists from the authorized admin endpoint.
+  const loadDatabaseData = useCallback(async () => {
+    setDbLoading(true);
+    try {
+      const res = await fetch("/api/admin/data");
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 503) {
+        setServerConfigured(false);
+        triggerToast(data.error || "Server is not fully configured.");
+        return;
+      }
+      if (!res.ok) {
+        triggerToast(data.error || "Failed to fetch records.");
+        return;
+      }
+      setServerConfigured(true);
+      setPrompts(data.prompts ?? []);
+      setNews(data.news ?? []);
+      setSubscribers(data.subscribers ?? []);
+    } catch {
+      triggerToast("Could not reach the server.");
+    } finally {
+      setDbLoading(false);
     }
+  }, []);
+
+  // On mount, ask the server whether the session cookie is valid.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/session");
+        const data = await res.json().catch(() => ({}));
+        if (data.configured === false) setServerConfigured(false);
+        if (data.authenticated) {
+          setIsAuthenticated(true);
+          await loadDatabaseData();
+        }
+      } catch {
+        // network issue; leave unauthenticated
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, [loadDatabaseData]);
+
+  // Handle Login (server-verified)
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: passwordInput }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setIsAuthenticated(true);
+        setPasswordInput("");
+        triggerToast("Access granted. Welcome, admin.");
+        await loadDatabaseData();
+      } else if (res.status === 429) {
+        triggerToast("Too many attempts. Please wait a minute and try again.");
+      } else if (res.status === 503) {
+        setServerConfigured(false);
+        triggerToast(data.error || "Admin auth is not configured on the server.");
+      } else {
+        triggerToast(data.error || "Access denied.");
+      }
+    } catch {
+      triggerToast("Could not reach the server.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin/logout", { method: "POST" });
+    } catch {
+      // ignore; clearing local state below is enough for the UI
+    }
+    setIsAuthenticated(false);
+    setPrompts([]);
+    setNews([]);
+    setSubscribers([]);
+    triggerToast("Logged out.");
   };
 
   // PROMPTS CRUD ACTIONS
@@ -157,20 +179,20 @@ export default function AdminClient() {
         targetAI: item.targetAI,
         promptText: item.promptText,
         outputDescription: item.outputDescription || "",
-        difficulty: item.difficulty
+        difficulty: item.difficulty,
       });
     } else {
       setEditingPrompt(null);
       setPromptForm({
-        id: `p-${Date.now()}`,
-        slug: "new-prompt-slug-" + Math.floor(Math.random() * 1000),
+        id: "",
+        slug: "",
         title: "",
         description: "",
         category: "web-app",
         targetAI: "Claude 3.5 Sonnet",
         promptText: "",
         outputDescription: "",
-        difficulty: "Intermediate"
+        difficulty: "Intermediate",
       });
     }
     setIsPromptModalOpen(true);
@@ -178,41 +200,12 @@ export default function AdminClient() {
 
   const handlePromptSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const saveDate = editingPrompt ? editingPrompt.date : new Date().toISOString().split("T")[0];
-    const viewsCount = editingPrompt ? editingPrompt.views : 0;
-    const likesCount = editingPrompt ? editingPrompt.likes : 0;
+    if (isSaving) return;
+    const isEdit = !!editingPrompt;
 
+    // Note: no id/views/likes/date — the server owns those. Editing never
+    // clobbers live counters.
     const payload = {
-      id: promptForm.id,
-      slug: promptForm.slug,
-      title: promptForm.title,
-      description: promptForm.description,
-      category: promptForm.category,
-      target_ai: promptForm.targetAI, // db key map
-      prompt_text: promptForm.promptText,
-      output_description: promptForm.outputDescription,
-      views: viewsCount,
-      likes: likesCount,
-      difficulty: promptForm.difficulty,
-      date: saveDate
-    };
-
-    if (hasSupabaseCredentials) {
-      try {
-        const { error } = await supabase
-          .from("prompts")
-          .upsert([payload], { onConflict: "id" });
-        if (error) throw error;
-        triggerToast("Prompt saved successfully to database!");
-      } catch (err) {
-        console.error("[Admin Save Prompt]", err);
-        triggerToast("Database insert failed. Saved in local layout state only.");
-      }
-    }
-
-    // Local layout state sync
-    const mappedItem: PromptItem = {
-      id: promptForm.id,
       slug: promptForm.slug,
       title: promptForm.title,
       description: promptForm.description,
@@ -220,38 +213,62 @@ export default function AdminClient() {
       targetAI: promptForm.targetAI,
       promptText: promptForm.promptText,
       outputDescription: promptForm.outputDescription,
-      views: viewsCount,
-      likes: likesCount,
       difficulty: promptForm.difficulty,
-      date: saveDate
     };
 
-    if (editingPrompt) {
-      setPrompts(prompts.map((p) => (p.id === editingPrompt.id ? mappedItem : p)));
-    } else {
-      setPrompts([mappedItem, ...prompts]);
+    setIsSaving(true);
+    try {
+      const res = await fetch(
+        isEdit ? `/api/admin/prompts/${editingPrompt!.id}` : "/api/admin/prompts",
+        {
+          method: isEdit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+        triggerToast("Session expired. Please log in again.");
+        return;
+      }
+      if (!res.ok) {
+        triggerToast(data.error || "Failed to save prompt.");
+        return;
+      }
+      // Only touch local state after a confirmed server write.
+      const saved = data.prompt as PromptItem;
+      setPrompts((prev) =>
+        isEdit ? prev.map((p) => (p.id === saved.id ? saved : p)) : [saved, ...prev]
+      );
+      triggerToast(isEdit ? "Prompt updated." : "Prompt created.");
+      setIsPromptModalOpen(false);
+    } catch {
+      triggerToast("Could not reach the server.");
+    } finally {
+      setIsSaving(false);
     }
-    setIsPromptModalOpen(false);
   };
 
   const handlePromptDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this prompt?")) return;
-
-    if (hasSupabaseCredentials) {
-      try {
-        const { error } = await supabase.from("prompts").delete().eq("id", id);
-        if (error) throw error;
-        triggerToast("Prompt deleted from database.");
-      } catch (err) {
-        console.error("[Admin Delete Prompt]", err);
-        triggerToast("Database delete failed.");
+    try {
+      const res = await fetch(`/api/admin/prompts/${id}`, { method: "DELETE" });
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+        return;
       }
-    } else {
-      triggerToast("Deleted locally (sandbox).");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        triggerToast(data.error || "Delete failed.");
+        return;
+      }
+      setPrompts((prev) => prev.filter((p) => p.id !== id));
+      triggerToast("Prompt deleted.");
+    } catch {
+      triggerToast("Could not reach the server.");
     }
-    setPrompts(prompts.filter((p) => p.id !== id));
   };
-
 
   // NEWS CRUD ACTIONS
   const openNewsModal = (item: NewsItem | null = null) => {
@@ -265,19 +282,19 @@ export default function AdminClient() {
         summary: item.summary,
         content: item.content,
         importance: item.importance,
-        sourceUrl: item.sourceUrl || ""
+        sourceUrl: item.sourceUrl || "",
       });
     } else {
       setEditingNews(null);
       setNewsForm({
-        id: `n-${Date.now()}`,
-        slug: "new-release-slug-" + Math.floor(Math.random() * 1000),
+        id: "",
+        slug: "",
         title: "",
         category: "Model Release",
         summary: "",
         content: "",
         importance: "high",
-        sourceUrl: ""
+        sourceUrl: "",
       });
     }
     setIsNewsModalOpen(true);
@@ -285,101 +302,118 @@ export default function AdminClient() {
 
   const handleNewsSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const saveDate = editingNews ? editingNews.date : new Date().toISOString().split("T")[0];
+    if (isSaving) return;
+    const isEdit = !!editingNews;
 
     const payload = {
-      id: newsForm.id,
       slug: newsForm.slug,
       title: newsForm.title,
       category: newsForm.category,
       summary: newsForm.summary,
       content: newsForm.content,
       importance: newsForm.importance,
-      source_url: newsForm.sourceUrl || null,
-      date: saveDate
+      sourceUrl: newsForm.sourceUrl,
     };
 
-    if (hasSupabaseCredentials) {
-      try {
-        const { error } = await supabase
-          .from("news")
-          .upsert([payload], { onConflict: "id" });
-        if (error) throw error;
-        triggerToast("News article saved to database!");
-      } catch (err) {
-        console.error("[Admin Save News]", err);
-        triggerToast("Database insert failed.");
+    setIsSaving(true);
+    try {
+      const res = await fetch(
+        isEdit ? `/api/admin/news/${editingNews!.id}` : "/api/admin/news",
+        {
+          method: isEdit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+        triggerToast("Session expired. Please log in again.");
+        return;
       }
+      if (!res.ok) {
+        triggerToast(data.error || "Failed to save news article.");
+        return;
+      }
+      const saved = data.news as NewsItem;
+      setNews((prev) =>
+        isEdit ? prev.map((n) => (n.id === saved.id ? saved : n)) : [saved, ...prev]
+      );
+      triggerToast(isEdit ? "News article updated." : "News article created.");
+      setIsNewsModalOpen(false);
+    } catch {
+      triggerToast("Could not reach the server.");
+    } finally {
+      setIsSaving(false);
     }
-
-    const mappedItem: NewsItem = {
-      id: newsForm.id,
-      slug: newsForm.slug,
-      title: newsForm.title,
-      category: newsForm.category,
-      summary: newsForm.summary,
-      content: newsForm.content,
-      importance: newsForm.importance,
-      sourceUrl: newsForm.sourceUrl || undefined,
-      date: saveDate
-    };
-
-    if (editingNews) {
-      setNews(news.map((n) => (n.id === editingNews.id ? mappedItem : n)));
-    } else {
-      setNews([mappedItem, ...news]);
-    }
-    setIsNewsModalOpen(false);
   };
 
   const handleNewsDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this release update?")) return;
-
-    if (hasSupabaseCredentials) {
-      try {
-        const { error } = await supabase.from("news").delete().eq("id", id);
-        if (error) throw error;
-        triggerToast("News article deleted.");
-      } catch (err) {
-        console.error("[Admin Delete News]", err);
-        triggerToast("Database delete failed.");
+    try {
+      const res = await fetch(`/api/admin/news/${id}`, { method: "DELETE" });
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+        return;
       }
-    } else {
-      triggerToast("Deleted locally (sandbox).");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        triggerToast(data.error || "Delete failed.");
+        return;
+      }
+      setNews((prev) => prev.filter((n) => n.id !== id));
+      triggerToast("News article deleted.");
+    } catch {
+      triggerToast("Could not reach the server.");
     }
-    setNews(news.filter((n) => n.id !== id));
   };
-
 
   // SUBSCRIBERS ACTIONS
   const handleSubscriberDelete = async (id: string) => {
     if (!confirm("Remove this email from subscribers list?")) return;
-
-    if (hasSupabaseCredentials) {
-      try {
-        const { error } = await supabase.from("subscribers").delete().eq("id", id);
-        if (error) throw error;
-        triggerToast("Subscriber removed.");
-      } catch (err) {
-        console.error("[Admin Delete Subscriber]", err);
-        triggerToast("Database deletion failed.");
+    try {
+      const res = await fetch(`/api/admin/subscribers/${id}`, { method: "DELETE" });
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+        return;
       }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        triggerToast(data.error || "Delete failed.");
+        return;
+      }
+      setSubscribers((prev) => prev.filter((s) => s.id !== id));
+      triggerToast("Subscriber removed.");
+    } catch {
+      triggerToast("Could not reach the server.");
     }
-    setSubscribers(subscribers.filter((s) => s.id !== id));
   };
 
   const handleCopyEmails = () => {
     const list = subscribers.map((s) => s.email).join(", ");
-    navigator.clipboard.writeText(list).then(() => {
-      triggerToast("Copied subscriber list to clipboard!");
-    });
+    navigator.clipboard
+      .writeText(list)
+      .then(() => triggerToast("Copied subscriber list to clipboard!"))
+      .catch(() => triggerToast("Could not access the clipboard."));
   };
+
+  // Avoid flashing the login form before we know the session state.
+  if (!authChecked) {
+    return (
+      <div
+        className="app-shell"
+        style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", color: "var(--text-secondary)" }}
+      >
+        <span>Checking session…</span>
+      </div>
+    );
+  }
 
   // Render Login Panel
   if (!isAuthenticated) {
     return (
       <div className="app-shell" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
-        
+
         {/* Toast Alert */}
         <div className={`toast-notification ${showToast ? "toast-notification--show" : ""}`}>
           <span>{toastMessage}</span>
@@ -395,6 +429,12 @@ export default function AdminClient() {
             Enter your admin workspace password to authorize database modifications.
           </p>
 
+          {!serverConfigured && (
+            <div className="news-timeline-info" style={{ borderColor: "var(--accent-red)", marginBottom: "1.25rem", textAlign: "left" }}>
+              <span>⚠️ Admin access is not configured on the server. Set <code>ADMIN_PASSWORD</code> (and <code>SUPABASE_SERVICE_ROLE_KEY</code>) in the server environment.</span>
+            </div>
+          )}
+
           <form onSubmit={handleLoginSubmit}>
             <div style={{ marginBottom: "1.25rem", textAlign: "left" }}>
               <label style={{ fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: "0.4rem", display: "block" }}>Password</label>
@@ -404,12 +444,13 @@ export default function AdminClient() {
                 style={{ width: "100%" }}
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="default: admin123"
+                placeholder="Enter admin password"
+                autoComplete="current-password"
                 required
               />
             </div>
-            <button type="submit" className="action-btn-large" style={{ width: "100%" }}>
-              Authorize Login
+            <button type="submit" className="action-btn-large" style={{ width: "100%" }} disabled={loginLoading}>
+              {loginLoading ? "Authorizing…" : "Authorize Login"}
             </button>
           </form>
         </div>
@@ -420,29 +461,18 @@ export default function AdminClient() {
   // Render Main Dashboard
   return (
     <div className="app-shell admin-dashboard-shell">
-      
+
       {/* Toast Alert */}
       <div className={`toast-notification ${showToast ? "toast-notification--show" : ""}`}>
         <span>{toastMessage}</span>
       </div>
 
       {/* Admin header */}
-      <header className="app-header">
-        <div className="app-header__container">
-          <div className="logo-container">
-            <span className="logo-icon">▲</span>
-            <span>App<span className="logo-text">PromptHub</span> <span className="admin-pill">Admin</span></span>
-          </div>
-          <nav className="nav-links">
-            <a href="/" style={{ fontSize: "0.85rem", color: "var(--text-secondary)", textDecoration: "underline" }}>View Front Website</a>
-            <button onClick={() => setIsAuthenticated(false)} style={{ fontSize: "0.85rem", color: "var(--accent-red)" }}>Log Out</button>
-          </nav>
-        </div>
-      </header>
+      <SiteHeader variant="admin" onSignOut={handleLogout} />
 
       {/* Main layout grid */}
       <div className="admin-layout-container" style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "calc(100vh - 70px)" }}>
-        
+
         {/* Sidebar Nav */}
         <aside className="admin-sidebar" style={{ background: "#040407", borderRight: "1px solid var(--border-color)", padding: "2rem 1.25rem" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -475,11 +505,11 @@ export default function AdminClient() {
 
         {/* Content Pane */}
         <main className="admin-content-pane" style={{ padding: "2.5rem 3.5rem" }}>
-          
-          {/* Sandbox Mock Alert */}
-          {!hasSupabaseCredentials && (
-            <div className="news-timeline-info" style={{ borderColor: "var(--accent-purple)", marginBottom: "2rem" }}>
-              <span>⚡ <strong>Running in Mock Sandbox Mode:</strong> Supabase keys are missing in `.env.local`. All prompt edits, additions, and deletions will reside in local memory only and reset upon browser refresh. Connect Supabase to write permanently!</span>
+
+          {/* Server config warning */}
+          {!serverConfigured && (
+            <div className="news-timeline-info" style={{ borderColor: "var(--accent-red)", marginBottom: "2rem" }}>
+              <span>⚠️ <strong>Server not fully configured:</strong> the Supabase service-role key is missing, so writes will fail. Set <code>SUPABASE_SERVICE_ROLE_KEY</code> in the server environment.</span>
             </div>
           )}
 
@@ -527,6 +557,9 @@ export default function AdminClient() {
                       </td>
                     </tr>
                   ))}
+                  {prompts.length === 0 && !dbLoading && (
+                    <tr><td colSpan={6} style={{ color: "var(--text-muted)" }}>No prompts yet.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -572,6 +605,9 @@ export default function AdminClient() {
                       </td>
                     </tr>
                   ))}
+                  {news.length === 0 && !dbLoading && (
+                    <tr><td colSpan={5} style={{ color: "var(--text-muted)" }}>No releases yet.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -608,6 +644,9 @@ export default function AdminClient() {
                       </td>
                     </tr>
                   ))}
+                  {subscribers.length === 0 && !dbLoading && (
+                    <tr><td colSpan={3} style={{ color: "var(--text-muted)" }}>No subscribers yet.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -616,36 +655,24 @@ export default function AdminClient() {
           {/* PANEL D: SYSTEM STATUS */}
           {activePanel === "status" && (
             <div>
-              <h1 style={{ fontSize: "1.6rem", fontWeight: "700", letterSpacing: "-0.02em", marginBottom: "0.5rem" }}>System Status & Credentials</h1>
+              <h1 style={{ fontSize: "1.6rem", fontWeight: "700", letterSpacing: "-0.02em", marginBottom: "0.5rem" }}>System Status &amp; Credentials</h1>
               <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "2rem" }}>Check environment connections and API settings.</p>
 
               <div className="status-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem" }}>
-                
+
                 {/* Supabase Status Card */}
                 <div className="status-card" style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "var(--radius-md)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
                     <span style={{ fontWeight: "700" }}>Supabase Database Connection</span>
-                    <span className={`status-tag ${hasSupabaseCredentials ? "status-tag--online" : "status-tag--offline"}`}>
-                      {hasSupabaseCredentials ? "ONLINE" : "MISSING"}
+                    <span className={`status-tag ${serverConfigured ? "status-tag--online" : "status-tag--offline"}`}>
+                      {serverConfigured ? "ONLINE" : "MISSING"}
                     </span>
                   </div>
                   <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: "1.4" }}>
-                    Handles prompt entries, radar articles, views counters, and email subscribers registers. Configured in your `.env.local` file.
+                    Handles prompt entries, radar articles, views counters, and email subscribers. Admin writes use the server-side service-role key.
                   </p>
                 </div>
 
-                {/* Resend Status Card */}
-                <div className="status-card" style={{ background: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "var(--radius-md)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                    <span style={{ fontWeight: "700" }}>Resend Marketing List Sync</span>
-                    <span className={`status-tag ${process.env.NEXT_PUBLIC_RESEND_CONNECTED === "true" || (typeof window === "undefined" ? false : !!(process.env.RESEND_API_KEY)) ? "status-tag--online" : "status-tag--offline"}`}>
-                      {!!(process.env.RESEND_API_KEY) ? "ONLINE" : "MISSING"}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: "1.4" }}>
-                    Pushes subscribers to your Resend.com dashboard. If offline, submissions are saved to the Supabase backup table automatically.
-                  </p>
-                </div>
               </div>
             </div>
           )}
@@ -669,10 +696,9 @@ export default function AdminClient() {
                   <input
                     type="text"
                     className="builder-input"
-                    value={promptForm.id}
-                    disabled={!!editingPrompt}
-                    onChange={(e) => setPromptForm({ ...promptForm, id: e.target.value })}
-                    required
+                    value={editingPrompt ? promptForm.id : ""}
+                    disabled
+                    placeholder="Auto-generated on save"
                   />
                 </div>
                 <div className="builder-field">
@@ -682,6 +708,7 @@ export default function AdminClient() {
                     className="builder-input"
                     value={promptForm.slug}
                     onChange={(e) => setPromptForm({ ...promptForm, slug: e.target.value })}
+                    placeholder="lowercase-with-hyphens"
                     required
                   />
                 </div>
@@ -717,7 +744,7 @@ export default function AdminClient() {
                   <select
                     className="builder-select"
                     value={promptForm.category}
-                    onChange={(e) => setPromptForm({ ...promptForm, category: e.target.value as any })}
+                    onChange={(e) => setPromptForm({ ...promptForm, category: e.target.value as typeof promptForm.category })}
                   >
                     <option value="web-app">Web Apps</option>
                     <option value="blog">Web Content</option>
@@ -739,7 +766,7 @@ export default function AdminClient() {
                   <select
                     className="builder-select"
                     value={promptForm.difficulty}
-                    onChange={(e) => setPromptForm({ ...promptForm, difficulty: e.target.value as any })}
+                    onChange={(e) => setPromptForm({ ...promptForm, difficulty: e.target.value as typeof promptForm.difficulty })}
                   >
                     <option value="Beginner">Beginner</option>
                     <option value="Intermediate">Intermediate</option>
@@ -749,7 +776,7 @@ export default function AdminClient() {
               </div>
 
               <div className="builder-field">
-                <label className="builder-field__label">Prompt Prompt Code (PromptText)</label>
+                <label className="builder-field__label">Prompt Text</label>
                 <textarea
                   className="builder-input"
                   style={{ minHeight: "120px", fontFamily: "monospace", fontSize: "0.8rem" }}
@@ -761,7 +788,7 @@ export default function AdminClient() {
               </div>
 
               <div className="builder-field">
-                <label className="builder-field__label">Expected Output Preview (OutputDescription)</label>
+                <label className="builder-field__label">Expected Output Preview</label>
                 <textarea
                   className="builder-input"
                   style={{ minHeight: "60px", fontFamily: "inherit" }}
@@ -776,8 +803,8 @@ export default function AdminClient() {
                 <button type="button" className="prompt-btn--details" style={{ padding: "0.55rem 1.25rem" }} onClick={() => setIsPromptModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="action-btn-large" style={{ padding: "0.55rem 1.25rem" }}>
-                  Save Prompt
+                <button type="submit" className="action-btn-large" style={{ padding: "0.55rem 1.25rem" }} disabled={isSaving}>
+                  {isSaving ? "Saving…" : "Save Prompt"}
                 </button>
               </div>
             </form>
@@ -801,10 +828,9 @@ export default function AdminClient() {
                   <input
                     type="text"
                     className="builder-input"
-                    value={newsForm.id}
-                    disabled={!!editingNews}
-                    onChange={(e) => setNewsForm({ ...newsForm, id: e.target.value })}
-                    required
+                    value={editingNews ? newsForm.id : ""}
+                    disabled
+                    placeholder="Auto-generated on save"
                   />
                 </div>
                 <div className="builder-field">
@@ -814,6 +840,7 @@ export default function AdminClient() {
                     className="builder-input"
                     value={newsForm.slug}
                     onChange={(e) => setNewsForm({ ...newsForm, slug: e.target.value })}
+                    placeholder="lowercase-with-hyphens"
                     required
                   />
                 </div>
@@ -837,7 +864,7 @@ export default function AdminClient() {
                   <select
                     className="builder-select"
                     value={newsForm.category}
-                    onChange={(e) => setNewsForm({ ...newsForm, category: e.target.value as any })}
+                    onChange={(e) => setNewsForm({ ...newsForm, category: e.target.value as typeof newsForm.category })}
                   >
                     <option value="Model Release">Model Release</option>
                     <option value="Industry News">Industry News</option>
@@ -849,7 +876,7 @@ export default function AdminClient() {
                   <select
                     className="builder-select"
                     value={newsForm.importance}
-                    onChange={(e) => setNewsForm({ ...newsForm, importance: e.target.value as any })}
+                    onChange={(e) => setNewsForm({ ...newsForm, importance: e.target.value as typeof newsForm.importance })}
                   >
                     <option value="high">High priority</option>
                     <option value="medium">Medium priority</option>
@@ -896,8 +923,8 @@ export default function AdminClient() {
                 <button type="button" className="prompt-btn--details" style={{ padding: "0.55rem 1.25rem" }} onClick={() => setIsNewsModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="action-btn-large" style={{ padding: "0.55rem 1.25rem" }}>
-                  Save Radar Update
+                <button type="submit" className="action-btn-large" style={{ padding: "0.55rem 1.25rem" }} disabled={isSaving}>
+                  {isSaving ? "Saving…" : "Save Radar Update"}
                 </button>
               </div>
             </form>
