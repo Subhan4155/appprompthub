@@ -68,6 +68,7 @@ export default function HomeClient({ defaultTab = "explore" }: HomeClientProps) 
     promptText: "",
     outputDescription: "",
     difficulty: "Intermediate" as "Beginner" | "Intermediate" | "Advanced",
+    expectedOutputImageUrl: "",
   });
   const [submitLoading, setSubmitLoading] = useState(false);
   const [editingCustom, setEditingCustom] = useState<CustomUserPrompt | null>(null);
@@ -671,6 +672,7 @@ export default function HomeClient({ defaultTab = "explore" }: HomeClientProps) 
           promptText: "",
           outputDescription: "",
           difficulty: "Intermediate",
+          expectedOutputImageUrl: "",
         });
         loadSubmissions();
         return;
@@ -705,6 +707,7 @@ export default function HomeClient({ defaultTab = "explore" }: HomeClientProps) 
         promptText: "",
         outputDescription: "",
         difficulty: "Intermediate",
+        expectedOutputImageUrl: "",
       });
       loadSubmissions();
     } catch (err: unknown) {
@@ -1940,7 +1943,7 @@ Write clean, modular code following standard structures. Include inline document
       {/* MODAL 4: SHARE PROMPT RECIPE */}
       {isSubmitModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsSubmitModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "750px" }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "850px", width: "95%" }}>
             <button className="modal-close-btn" onClick={() => setIsSubmitModalOpen(false)}>&times;</button>
             <h2 style={{ fontSize: "1.45rem", fontWeight: "700", marginBottom: "0.25rem", color: "#fff" }}>
               Share Prompt Recipe
@@ -2038,6 +2041,95 @@ Write clean, modular code following standard structures. Include inline document
                   placeholder="Describe what this prompt outputs when run (or sample preview structure)."
                   required
                 />
+              </div>
+
+              <div className="builder-field">
+                <label className="builder-field__label">EXPECTED OUTPUT SCREENSHOT</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="user-screenshot-file"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setSubmitForm({ ...submitForm, expectedOutputImageUrl: reader.result as string });
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="user-screenshot-file"
+                      className="prompt-btn--details"
+                      style={{
+                        padding: "0.55rem 1.25rem",
+                        cursor: "pointer",
+                        background: "rgba(192, 132, 252, 0.1)",
+                        border: "1px solid var(--accent-purple)",
+                        color: "var(--accent-purple)",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.35rem"
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                      Upload Screenshot File
+                    </label>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>or enter URL below</span>
+                  </div>
+
+                  <input
+                    type="text"
+                    className="builder-input"
+                    value={submitForm.expectedOutputImageUrl}
+                    onChange={(e) => setSubmitForm({ ...submitForm, expectedOutputImageUrl: e.target.value })}
+                    placeholder="e.g. https://example.com/screenshot.jpg or base64 data"
+                  />
+
+                  {/* Screenshot Image Preview inside Modal */}
+                  {submitForm.expectedOutputImageUrl && (
+                    <div style={{ position: "relative", width: "fit-content", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", overflow: "hidden", marginTop: "0.5rem", background: "#020202", padding: "0.35rem" }}>
+                      <img
+                        src={submitForm.expectedOutputImageUrl}
+                        alt="Screenshot Preview"
+                        style={{ maxHeight: "150px", maxWidth: "100%", display: "block", objectFit: "contain", borderRadius: "var(--radius-sm)" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSubmitForm({ ...submitForm, expectedOutputImageUrl: "" })}
+                        style={{
+                          position: "absolute",
+                          top: "0.5rem",
+                          right: "0.5rem",
+                          background: "rgba(239, 68, 68, 0.85)",
+                          color: "#fff",
+                          border: "none",
+                          width: "22px",
+                          height: "22px",
+                          borderRadius: "50%",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          lineHeight: 1
+                        }}
+                        title="Remove image"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "2rem" }}>

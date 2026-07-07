@@ -687,7 +687,7 @@ export default function AdminClient() {
       {/* MODAL 1: CREATE / EDIT PROMPT */}
       {isPromptModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsPromptModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "650px" }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "850px", width: "95%" }}>
             <button className="modal-close-btn" onClick={() => setIsPromptModalOpen(false)}>&times;</button>
             <h2 style={{ fontSize: "1.3rem", fontWeight: "700", marginBottom: "1.5rem" }}>
               {editingPrompt ? "Edit Prompt Record" : "Create New Prompt Record"}
