@@ -11,7 +11,6 @@ export async function PATCH(
 ) {
   const guard = await requireAdminClient();
   if ("response" in guard) return guard.response;
-  const { admin } = guard;
   const { id } = await params;
 
   let body: Record<string, unknown>;
@@ -29,7 +28,22 @@ export async function PATCH(
     throw e;
   }
 
-  const { data, error } = await admin
+  if (guard.isMock) {
+    const mockedNews = {
+      id,
+      slug: upd.slug as string || "mock-slug",
+      title: upd.title as string || "Mock Title",
+      category: upd.category as any || "Model Release",
+      summary: upd.summary as string || "",
+      content: upd.content as string || "",
+      importance: upd.importance as any || "high",
+      source_url: upd.source_url as string || "",
+      date: new Date().toISOString().slice(0, 10),
+    };
+    return NextResponse.json({ news: rowToNews(mockedNews as any) });
+  }
+
+  const { data, error } = await guard.admin
     .from("news")
     .update(upd)
     .eq("id", id)
@@ -49,10 +63,13 @@ export async function DELETE(
 ) {
   const guard = await requireAdminClient();
   if ("response" in guard) return guard.response;
-  const { admin } = guard;
   const { id } = await params;
 
-  const { error } = await admin.from("news").delete().eq("id", id);
+  if (guard.isMock) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const { error } = await guard.admin.from("news").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

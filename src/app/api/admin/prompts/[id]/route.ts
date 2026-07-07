@@ -11,7 +11,6 @@ export async function PATCH(
 ) {
   const guard = await requireAdminClient();
   if ("response" in guard) return guard.response;
-  const { admin } = guard;
   const { id } = await params;
 
   let body: Record<string, unknown>;
@@ -29,7 +28,26 @@ export async function PATCH(
     throw e;
   }
 
-  const { data, error } = await admin
+  if (guard.isMock) {
+    const mockedPrompt = {
+      id,
+      slug: upd.slug as string || "mock-slug",
+      title: upd.title as string || "Mock Title",
+      description: upd.description as string || "",
+      category: upd.category as any || "web-app",
+      target_ai: upd.target_ai as string || "Claude 3.5 Sonnet",
+      prompt_text: upd.prompt_text as string || "",
+      output_description: upd.output_description as string || "",
+      difficulty: upd.difficulty as any || "Intermediate",
+      expected_output_image_url: upd.expected_output_image_url as string || "",
+      views: 120,
+      likes: 45,
+      date: new Date().toISOString().slice(0, 10),
+    };
+    return NextResponse.json({ prompt: rowToPrompt(mockedPrompt as any) });
+  }
+
+  const { data, error } = await guard.admin
     .from("prompts")
     .update(upd)
     .eq("id", id)
@@ -49,10 +67,13 @@ export async function DELETE(
 ) {
   const guard = await requireAdminClient();
   if ("response" in guard) return guard.response;
-  const { admin } = guard;
   const { id } = await params;
 
-  const { error } = await admin.from("prompts").delete().eq("id", id);
+  if (guard.isMock) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const { error } = await guard.admin.from("prompts").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
