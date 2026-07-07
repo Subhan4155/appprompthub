@@ -182,3 +182,9 @@ values
 ('Hostinger VPS', 'hosting', 'https://hostinger.com', 'Fast, secure VPS and shared hosting for modern apps.', 20, true),
 ('Claude AI Pro', 'ai_tool', 'https://claude.ai', 'Anthropic Claude AI chat helper for complex reasoning.', 30, true)
 on conflict do nothing;
+
+-- ====================================================
+-- Group 4: Expected Output Image URL support
+-- ====================================================
+alter table prompts
+  add column if not exists expected_output_image_url text;

@@ -25,6 +25,12 @@ export interface PromptRow {
   difficulty: string;
   date: string;
   image_url?: string | null;
+  expected_output_image_url?: string | null;
+  price_cents?: number | null;
+  preview_text?: string | null;
+  full_text?: string | null;
+  status?: string | null;
+  source?: string | null;
 }
 
 export interface NewsRow {
@@ -60,6 +66,12 @@ export function rowToPrompt(p: PromptRow): PromptItem {
     difficulty: p.difficulty as PromptItem["difficulty"],
     date: p.date,
     imageUrl: p.image_url ?? undefined,
+    expectedOutputImageUrl: p.expected_output_image_url ?? undefined,
+    priceCents: p.price_cents ?? undefined,
+    previewText: p.preview_text ?? undefined,
+    fullText: p.full_text ?? undefined,
+    status: p.status as any ?? undefined,
+    source: p.source as any ?? undefined,
   };
 }
 

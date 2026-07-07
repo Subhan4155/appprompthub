@@ -11,10 +11,13 @@ export interface PromptItem {
   likes: number;
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
   imageUrl?: string;
+  expectedOutputImageUrl?: string;
   date: string; // Added date for sorting by newest
   priceCents?: number;
   previewText?: string;
   fullText?: string;
+  status?: 'pending' | 'approved' | 'rejected';
+  source?: 'official' | 'community';
 }
 
 export interface NewsItem {

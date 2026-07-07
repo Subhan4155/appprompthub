@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdminRequestAuthenticated } from "@/lib/adminAuth";
 import { getSupabaseAdmin, isSupabaseAdminConfigured } from "@/lib/supabaseAdmin";
 import { PromptRow, NewsRow, rowToPrompt, rowToNews } from "@/lib/mappers";
+import { mockPrompts, mockNews } from "@/data/mockData";
 
 export const runtime = "nodejs";
 
@@ -12,10 +13,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!isSupabaseAdminConfigured()) {
-    return NextResponse.json(
-      { error: "Supabase service role is not configured on the server.", configured: false },
-      { status: 503 }
-    );
+    return NextResponse.json({
+      configured: false,
+      prompts: mockPrompts,
+      news: mockNews,
+      subscribers: [
+        { id: "sub1", email: "builder@example.com", created_at: new Date().toISOString() },
+        { id: "sub2", email: "agency@example.com", created_at: new Date().toISOString() },
+      ],
+    });
   }
 
   const admin = getSupabaseAdmin();
@@ -31,6 +37,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    configured: true,
     prompts: ((pRes.data as PromptRow[]) ?? []).map(rowToPrompt),
     news: ((nRes.data as NewsRow[]) ?? []).map(rowToNews),
     subscribers: sRes.data ?? [],

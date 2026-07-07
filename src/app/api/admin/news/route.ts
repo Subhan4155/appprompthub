@@ -8,7 +8,6 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const guard = await requireAdminClient();
   if ("response" in guard) return guard.response;
-  const { admin } = guard;
 
   let body: Record<string, unknown>;
   try {
@@ -25,7 +24,11 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  const { data, error } = await admin.from("news").insert(row).select().single();
+  if (guard.isMock) {
+    return NextResponse.json({ news: rowToNews(row as any) }, { status: 201 });
+  }
+
+  const { data, error } = await guard.admin.from("news").insert(row).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ news: rowToNews(data as NewsRow) }, { status: 201 });
 }

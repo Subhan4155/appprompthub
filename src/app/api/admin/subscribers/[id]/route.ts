@@ -9,10 +9,13 @@ export async function DELETE(
 ) {
   const guard = await requireAdminClient();
   if ("response" in guard) return guard.response;
-  const { admin } = guard;
   const { id } = await params;
 
-  const { error } = await admin.from("subscribers").delete().eq("id", id);
+  if (guard.isMock) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const { error } = await guard.admin.from("subscribers").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

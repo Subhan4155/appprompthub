@@ -44,6 +44,12 @@ export default function AdminClient() {
     promptText: "",
     outputDescription: "",
     difficulty: "Intermediate" as "Beginner" | "Intermediate" | "Advanced",
+    expectedOutputImageUrl: "",
+    priceCents: 0,
+    previewText: "",
+    fullText: "",
+    status: "approved" as "pending" | "approved" | "rejected",
+    source: "official" as "official" | "community",
   });
 
   // News Form States
@@ -180,6 +186,12 @@ export default function AdminClient() {
         promptText: item.promptText,
         outputDescription: item.outputDescription || "",
         difficulty: item.difficulty,
+        expectedOutputImageUrl: item.expectedOutputImageUrl || "",
+        priceCents: item.priceCents || 0,
+        previewText: item.previewText || "",
+        fullText: item.fullText || "",
+        status: item.status || "approved",
+        source: item.source || "official",
       });
     } else {
       setEditingPrompt(null);
@@ -193,6 +205,12 @@ export default function AdminClient() {
         promptText: "",
         outputDescription: "",
         difficulty: "Intermediate",
+        expectedOutputImageUrl: "",
+        priceCents: 0,
+        previewText: "",
+        fullText: "",
+        status: "approved",
+        source: "official",
       });
     }
     setIsPromptModalOpen(true);
@@ -214,6 +232,12 @@ export default function AdminClient() {
       promptText: promptForm.promptText,
       outputDescription: promptForm.outputDescription,
       difficulty: promptForm.difficulty,
+      expectedOutputImageUrl: promptForm.expectedOutputImageUrl,
+      priceCents: promptForm.priceCents,
+      previewText: promptForm.previewText,
+      fullText: promptForm.fullText,
+      status: promptForm.status,
+      source: promptForm.source,
     };
 
     setIsSaving(true);
@@ -683,7 +707,7 @@ export default function AdminClient() {
       {/* MODAL 1: CREATE / EDIT PROMPT */}
       {isPromptModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsPromptModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "650px" }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "850px", width: "95%" }}>
             <button className="modal-close-btn" onClick={() => setIsPromptModalOpen(false)}>&times;</button>
             <h2 style={{ fontSize: "1.3rem", fontWeight: "700", marginBottom: "1.5rem" }}>
               {editingPrompt ? "Edit Prompt Record" : "Create New Prompt Record"}
@@ -775,6 +799,32 @@ export default function AdminClient() {
                 </div>
               </div>
 
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
+                <div className="builder-field">
+                  <label className="builder-field__label">Moderation Status</label>
+                  <select
+                    className="builder-select"
+                    value={promptForm.status}
+                    onChange={(e) => setPromptForm({ ...promptForm, status: e.target.value as any })}
+                  >
+                    <option value="approved">Approved & Live</option>
+                    <option value="pending">Pending Moderation</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                <div className="builder-field">
+                  <label className="builder-field__label">Source</label>
+                  <select
+                    className="builder-select"
+                    value={promptForm.source}
+                    onChange={(e) => setPromptForm({ ...promptForm, source: e.target.value as any })}
+                  >
+                    <option value="official">Official Admin Curated</option>
+                    <option value="community">Community Submission</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="builder-field">
                 <label className="builder-field__label">Prompt Text</label>
                 <textarea
@@ -797,6 +847,157 @@ export default function AdminClient() {
                   placeholder="A fully responsive dashboard containing SVG graphics..."
                   required
                 />
+              </div>
+
+              {/* Payments & Monetization section */}
+              <div style={{ border: "1px dashed var(--border-color)", padding: "1.25rem", borderRadius: "var(--radius-md)", background: "rgba(192, 132, 252, 0.03)", marginTop: "1.5rem", marginBottom: "1.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                  <input
+                    type="checkbox"
+                    id="admin-is-premium-checkbox"
+                    checked={promptForm.priceCents > 0}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setPromptForm({
+                        ...promptForm,
+                        priceCents: checked ? 499 : 0,
+                        previewText: checked ? promptForm.previewText || promptForm.promptText.slice(0, 150) + "..." : "",
+                        fullText: checked ? promptForm.fullText || promptForm.promptText : "",
+                      });
+                    }}
+                    style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                  />
+                  <label htmlFor="admin-is-premium-checkbox" style={{ fontWeight: "700", color: "#fff", fontSize: "0.9rem", cursor: "pointer" }}>
+                    Mark as Premium (Paid Prompt)
+                  </label>
+                </div>
+
+                {promptForm.priceCents > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    <div className="builder-field">
+                      <label className="builder-field__label">Price in Cents (e.g. 499 for $4.99)</label>
+                      <input
+                        type="number"
+                        className="builder-input"
+                        value={promptForm.priceCents}
+                        onChange={(e) => setPromptForm({ ...promptForm, priceCents: parseInt(e.target.value) || 0 })}
+                        placeholder="e.g. 499"
+                        required
+                      />
+                    </div>
+                    <div className="builder-field">
+                      <label className="builder-field__label">Premium Blurred Preview Text (Shown to public)</label>
+                      <textarea
+                        className="builder-input"
+                        style={{ minHeight: "60px", fontFamily: "inherit" }}
+                        value={promptForm.previewText}
+                        onChange={(e) => setPromptForm({ ...promptForm, previewText: e.target.value })}
+                        placeholder="Provide teaser text for non-paying users..."
+                        required
+                      />
+                    </div>
+                    <div className="builder-field">
+                      <label className="builder-field__label">Full Locked Prompt Code (Shown only to paying/unlocked users)</label>
+                      <textarea
+                        className="builder-input"
+                        style={{ minHeight: "120px", fontFamily: "monospace", fontSize: "0.8rem" }}
+                        value={promptForm.fullText}
+                        onChange={(e) => setPromptForm({ ...promptForm, fullText: e.target.value })}
+                        placeholder="Enter the complete locked prompt instructions..."
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="builder-field">
+                <label className="builder-field__label">Expected Output Screenshot</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="admin-screenshot-file"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setPromptForm({ ...promptForm, expectedOutputImageUrl: reader.result as string });
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="admin-screenshot-file"
+                      className="prompt-btn--details"
+                      style={{
+                        padding: "0.55rem 1.25rem",
+                        cursor: "pointer",
+                        background: "rgba(192, 132, 252, 0.1)",
+                        border: "1px solid var(--accent-purple)",
+                        color: "var(--accent-purple)",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.35rem"
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                      Upload Screenshot File
+                    </label>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>or enter URL below</span>
+                  </div>
+
+                  <input
+                    type="text"
+                    className="builder-input"
+                    value={promptForm.expectedOutputImageUrl}
+                    onChange={(e) => setPromptForm({ ...promptForm, expectedOutputImageUrl: e.target.value })}
+                    placeholder="e.g. /previews/saas-dashboard.jpg or base64 data"
+                  />
+
+                  {/* Screenshot Image Preview inside Modal */}
+                  {promptForm.expectedOutputImageUrl && (
+                    <div style={{ position: "relative", width: "fit-content", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", overflow: "hidden", marginTop: "0.5rem", background: "#020202", padding: "0.35rem" }}>
+                      <img
+                        src={promptForm.expectedOutputImageUrl}
+                        alt="Screenshot Preview"
+                        style={{ maxHeight: "150px", maxWidth: "100%", display: "block", objectFit: "contain", borderRadius: "var(--radius-sm)" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPromptForm({ ...promptForm, expectedOutputImageUrl: "" })}
+                        style={{
+                          position: "absolute",
+                          top: "0.5rem",
+                          right: "0.5rem",
+                          background: "rgba(239, 68, 68, 0.85)",
+                          color: "#fff",
+                          border: "none",
+                          width: "22px",
+                          height: "22px",
+                          borderRadius: "50%",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          lineHeight: 1
+                        }}
+                        title="Remove image"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "2rem" }}>
