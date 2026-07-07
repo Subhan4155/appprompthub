@@ -16,6 +16,8 @@ export interface PromptItem {
   priceCents?: number;
   previewText?: string;
   fullText?: string;
+  status?: 'pending' | 'approved' | 'rejected';
+  source?: 'official' | 'community';
 }
 
 export interface NewsItem {

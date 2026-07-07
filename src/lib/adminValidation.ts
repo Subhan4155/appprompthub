@@ -65,6 +65,14 @@ function urlOrNull(body: Body, key: string): string | null {
   return v;
 }
 
+function optInt(body: Body, key: string): number | null {
+  const v = body[key];
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (isNaN(n)) throw new ValidationError(`Field "${key}" must be a number.`);
+  return Math.floor(n);
+}
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -85,6 +93,11 @@ export function buildPromptInsert(body: Body) {
     likes: 0,
     difficulty: enumStr(body, "difficulty", DIFFICULTIES),
     expected_output_image_url: optStr(body, "expectedOutputImageUrl", 2000) ?? "",
+    price_cents: optInt(body, "priceCents") ?? 0,
+    preview_text: optStr(body, "previewText") ?? "",
+    full_text: optStr(body, "fullText") ?? "",
+    status: optStr(body, "status") ?? "approved",
+    source: optStr(body, "source") ?? "official",
     date: today(),
   };
 }
@@ -106,6 +119,11 @@ export function buildPromptUpdate(body: Body): Record<string, unknown> {
   if (has(body, "expectedOutputImageUrl")) {
     upd.expected_output_image_url = optStr(body, "expectedOutputImageUrl", 2000) ?? "";
   }
+  if (has(body, "priceCents")) upd.price_cents = optInt(body, "priceCents") ?? 0;
+  if (has(body, "previewText")) upd.preview_text = optStr(body, "previewText") ?? "";
+  if (has(body, "fullText")) upd.full_text = optStr(body, "fullText") ?? "";
+  if (has(body, "status")) upd.status = optStr(body, "status") ?? "approved";
+  if (has(body, "source")) upd.source = optStr(body, "source") ?? "official";
   if (Object.keys(upd).length === 0) {
     throw new ValidationError("No editable fields provided.");
   }
