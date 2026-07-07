@@ -11,6 +11,7 @@ export interface PromptItem {
   likes: number;
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
   imageUrl?: string;
+  expectedOutputImageUrl?: string;
   date: string; // Added date for sorting by newest
   priceCents?: number;
   previewText?: string;

@@ -559,6 +559,37 @@ export default function PromptDetailClient({ prompt }: PromptDetailClientProps) 
               </>
             )}
 
+            {prompt.expectedOutputImageUrl && (
+              <div style={{ marginTop: "2rem" }}>
+                <h3 className="modal__section-title">Expected Output Screenshot</h3>
+                <div 
+                  style={{ 
+                    border: "1px solid var(--border-color)", 
+                    borderRadius: "var(--radius-md)", 
+                    overflow: "hidden", 
+                    marginTop: "0.5rem", 
+                    background: "#020202",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    padding: "0.5rem"
+                  }}
+                >
+                  <img 
+                    src={prompt.expectedOutputImageUrl} 
+                    alt="Expected Output Preview" 
+                    style={{ 
+                      maxWidth: "100%", 
+                      maxHeight: "450px", 
+                      height: "auto", 
+                      borderRadius: "var(--radius-sm)",
+                      objectFit: "contain"
+                    }} 
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Voting & Reviews Section */}
             <div style={{ borderTop: "1px solid var(--border-color)", marginTop: "2.5rem", paddingTop: "2rem" }}>
               <h3 style={{ fontSize: "1.1rem", fontWeight: "700", color: "#fff", marginBottom: "1rem" }}>

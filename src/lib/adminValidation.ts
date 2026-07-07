@@ -84,6 +84,7 @@ export function buildPromptInsert(body: Body) {
     views: 0,
     likes: 0,
     difficulty: enumStr(body, "difficulty", DIFFICULTIES),
+    expected_output_image_url: optStr(body, "expectedOutputImageUrl", 2000) ?? "",
     date: today(),
   };
 }
@@ -102,6 +103,9 @@ export function buildPromptUpdate(body: Body): Record<string, unknown> {
     upd.output_description = optStr(body, "outputDescription", 2000) ?? "";
   }
   if (has(body, "difficulty")) upd.difficulty = enumStr(body, "difficulty", DIFFICULTIES);
+  if (has(body, "expectedOutputImageUrl")) {
+    upd.expected_output_image_url = optStr(body, "expectedOutputImageUrl", 2000) ?? "";
+  }
   if (Object.keys(upd).length === 0) {
     throw new ValidationError("No editable fields provided.");
   }

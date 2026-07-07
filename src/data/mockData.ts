@@ -23,6 +23,7 @@ Include:
     difficulty: "Intermediate",
     date: "2026-06-28",
     imageUrl: "/previews/saas-dashboard.jpg",
+    expectedOutputImageUrl: "/previews/saas-dashboard.jpg",
     priceCents: 499,
     previewText: "Create a single-page React component for a SaaS Analytics Dashboard. It should use HTML5 semantic tags and be styled using a premium, dark-themed dashboard look...",
     fullText: `Create a single-page React component for a SaaS Analytics Dashboard. It should use HTML5 semantic tags and be styled using a premium, dark-themed dashboard look.

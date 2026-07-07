@@ -44,6 +44,7 @@ export default function AdminClient() {
     promptText: "",
     outputDescription: "",
     difficulty: "Intermediate" as "Beginner" | "Intermediate" | "Advanced",
+    expectedOutputImageUrl: "",
   });
 
   // News Form States
@@ -180,6 +181,7 @@ export default function AdminClient() {
         promptText: item.promptText,
         outputDescription: item.outputDescription || "",
         difficulty: item.difficulty,
+        expectedOutputImageUrl: item.expectedOutputImageUrl || "",
       });
     } else {
       setEditingPrompt(null);
@@ -193,6 +195,7 @@ export default function AdminClient() {
         promptText: "",
         outputDescription: "",
         difficulty: "Intermediate",
+        expectedOutputImageUrl: "",
       });
     }
     setIsPromptModalOpen(true);
@@ -214,6 +217,7 @@ export default function AdminClient() {
       promptText: promptForm.promptText,
       outputDescription: promptForm.outputDescription,
       difficulty: promptForm.difficulty,
+      expectedOutputImageUrl: promptForm.expectedOutputImageUrl,
     };
 
     setIsSaving(true);
@@ -796,6 +800,17 @@ export default function AdminClient() {
                   onChange={(e) => setPromptForm({ ...promptForm, outputDescription: e.target.value })}
                   placeholder="A fully responsive dashboard containing SVG graphics..."
                   required
+                />
+              </div>
+
+              <div className="builder-field">
+                <label className="builder-field__label">Expected Output Screenshot URL</label>
+                <input
+                  type="text"
+                  className="builder-input"
+                  value={promptForm.expectedOutputImageUrl}
+                  onChange={(e) => setPromptForm({ ...promptForm, expectedOutputImageUrl: e.target.value })}
+                  placeholder="e.g. /previews/saas-dashboard.jpg"
                 />
               </div>
 
